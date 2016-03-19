@@ -18,7 +18,8 @@ def register_operation(name):
 def get_operation(operation_cfg:dict, global_config:dict):
   operation_name = operation_cfg['operation']
   OperationClass = OPERATIONS[operation_name]
-  return OperationClass(operation_cfg, global_config)
+  operation = OperationClass(operation_cfg, global_config)
+  return operation
 
 class ConfigurationError(Exception):
   pass
@@ -93,7 +94,6 @@ class TarOperation(BackupPipelineOperation):
         file.write(script)
         file.flush()
         subprocess.check_output(['bash', file.name])
-        pass
       except subprocess.CalledProcessError as e:
         raise ConfigurationError("One of referenced files did not exist {}".format(
           e.output
@@ -104,7 +104,7 @@ class CompressOperation(BackupPipelineOperation):
 
   ALGORITHM_COMMAND_MAP = {
     "bzip": "pbzip2 --to-stdout -{level}",
-    "gzip": "pigz -i 1024 -p {threads} --to-stdout -{level}"
+    "gzip": "pigz -i -b 1024 -p {threads} --to-stdout -{level}"
   }
 
   EXTENSIONS = {
@@ -170,7 +170,7 @@ class GPGEncrypt(_BaseGPGOperation):
 class GPGSign(_BaseGPGOperation):
   def forward(self, context: dict) -> str:
     return """
-       gpg --sign --local-user {key_id}
+       gpg --sign --local-user {key_id} --compress-algo none
     """.strip().format(key_id=self.key_id)
 
   @property
@@ -187,14 +187,8 @@ class Sync(BackupPipelineOperation):
 @register_operation('save backup')
 class SaveBackup(BackupPipelineOperation):
 
-  def sanitize_folder_name(self, folder):
-    return folder.replace("/", "SLASH")\
-      .replace("\0", 'NULL').replace(' ', "SPACE")
-
-
   def load_config(self, config: dict, global_config: dict):
     self.dest_file = self.config['dest_file']
-
 
   def generate_extensions(self, pipeline:'pipeline.BackupPipeline'):
     exts = (op.extension for op in pipeline.local_operations)
@@ -203,7 +197,7 @@ class SaveBackup(BackupPipelineOperation):
   def forward(self, context: dict) -> str:
 
     dest_folder = context['connection']['dest_folder']
-    dest_file = self.sanitize_folder_name(context['folders'])
+    dest_file = context['file_name']
     date = datetime.datetime.now().isoformat("T")
     pipeline = context['pipeline']
     extensions = self.generate_extensions(pipeline)
@@ -213,7 +207,37 @@ class SaveBackup(BackupPipelineOperation):
       date=date,
       extensions=extensions
     )
+    context['remote_dest_file_path'] = dest_file_final
     return "cat > {}".format(dest_file_final)
 
+
+@register_operation('push to cloud')
+class PushToCloud(BackupPipelineOperation):
+  def load_config(self, config: dict, global_config: dict):
+    super().load_config(config, global_config)
+    self.sync=config['sync']
+    self.target=config['target']
+    self.type=config['type']
+    if self.type != "gcloud":
+      raise ValueError("For now only gcloud is supported")
+
+  def sync_operation(self, context):
+    return "gsutil cp {file_name} {target}".format(
+      file_name=context['remote_dest_file_path'],
+      target=self.target
+    )
+
+  def async(self, command, context):
+    return 'bash -c "nohup {command} > {file_name}.upload.log 2>&1 &"'.format(
+      command=command,
+      file_name=context['remote_dest_file_path'],
+    )
+
+  def forward(self, context: dict) -> str:
+    command = self.sync_operation(context)
+    if not self.sync:
+      command = self.async(command, context)
+
+    return command
 
 

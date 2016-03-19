@@ -1,6 +1,8 @@
 
 import abc
 
+import itertools
+
 from . import operations
 
 from . connections import (
@@ -15,7 +17,6 @@ class BackupPipeline(operations.BackupPipelineOperation):
     self.remote_operations = []
     self.connection = None
     super().__init__(*args, **kwargs)
-
 
   def load_config(self, config: dict, global_config:dict):
     if config['connection'] != 'ssh':
@@ -32,6 +33,8 @@ class BackupPipeline(operations.BackupPipelineOperation):
         operations.get_operation(operation_cfg, global_config))
 
   def forward(self, context:dict) -> str:
+    for o in itertools.chain(self.local_operations, self.remote_operations):
+      o.verify(context)
     local = " | ".join(o.forward(context) for o in self.local_operations)
     remote = " && ".join(o.forward(context) for o in self.remote_operations)
 

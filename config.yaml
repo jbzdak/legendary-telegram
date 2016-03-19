@@ -1,5 +1,5 @@
-exececution:
-  parralel_jobs: 2
+execution:
+  parralel_jobs: 1
 connection:
   jbnas:
     host: jbnas
@@ -20,7 +20,7 @@ pipelines:
         key: 3CBF323610829410
     remote:
       - operation: save backup
-        dest_file: {dest_folder}/{dest_filename}{date}{extensions}
+        dest_file: "{dest_folder}/{dest_filename}{date}{extensions}"
       - operation: sync
   "compress encrypt push":
     type: backup pipeline
@@ -36,14 +36,15 @@ pipelines:
         key: 3CBF323610829410
     remote:
       - operation: save backup
-        dest_file: {dest_folder}/{dest_filename}{date}{extensions}
+        dest_file: "{dest_folder}/{dest_filename}{date}{extensions}"
       - operation: sync
       - operation: push to cloud
-        sync: true
-        target: gs://whatever
+        sync: false
+        target: gs://bucket/backups
         type: gcloud
 
 folders:
-  - folders: /home/jb /home/jboc /var
-    pipeline: compress encrypt
+  - folders: /tmp/foo /tmp/bar
+    file_name: foobar
+    pipeline: compress encrypt push
     connection: jbnas
