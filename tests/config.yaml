@@ -1,0 +1,29 @@
+exececution:
+  parralel: true
+connection:
+  jbnas:
+    host: jbnas
+    remote_user: jb
+    dest_folder: /data
+pipelines:
+  compress_encrypt:
+    type: backup pipeline
+    connection: ssh
+    local:
+      - operation: tar
+      - operation: compress
+        algorithm: gzip
+        level: 6
+      - operation: gpg encrypt
+        key: B4B3E302D6531426
+      - operation: gpg sign
+        key: 3CBF323610829410
+    remote:
+      - operation: save backup
+        dest_file: {dest_folder}/{dest_filename}{date}{extensions}
+      - operation: sync
+
+folders:
+  - folders: /home/jb /home/jboc /var
+    pipeline: compress_encrypt
+    connection: jbnas

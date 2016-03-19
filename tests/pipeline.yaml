@@ -1,0 +1,16 @@
+pipeline:
+  type: backup_pipeline
+  connection: ssh
+  local:
+    - operation: tar
+    - operation: compress
+      algorithm: gzip
+      level: 6
+    - operation: gpg encrypt
+      key: B4B3E302D6531426
+    - operation: gpg sign
+      key: 3CBF323610829410
+  remote:
+    - operation: save backup
+      dest_file: "{dest_folder}/{dest_filename}{date}{extensions}"
+    - operation: sync
