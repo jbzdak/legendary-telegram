@@ -35,7 +35,6 @@ Then these shell pipelines are launched in parralel (or one by one).
   (parralel version of gzip and bzip2). The compression process 
   **is a bottleneck**, so parralelisation is required. 
 * To use encryption you need to use ``gpg``.
- 
     * To encrypt you need a gpg public key installed and imported to gpg instance. 
     * To sign you need an unencrypted private key installed to gpg, I strongly 
       suggest using this key only for signing. 
@@ -51,6 +50,8 @@ Then these shell pipelines are launched in parralel (or one by one).
    and inelastic. 
 4. Add renice and ionice (optionally) to various parts of the pipeline to 
    have the system more usable duing backups. 
+5. Add some kind of either logarighmic backup saving, or removing older backups 
+   both from "cloud" and from local nas. 
    
 ### Random remarks 
   
@@ -87,7 +88,7 @@ Example config file (anonymized file I use):
           - operation: gpg sign
             key: 3CBF323610829410
         remote:
-          # Operations executed before after ssh
+          # Operations executed after ssh
           - operation: save backup
             dest_file: "{dest_folder}/{dest_filename}{date}{extensions}"
           - operation: sync
