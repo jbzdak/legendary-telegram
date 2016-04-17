@@ -7,6 +7,7 @@ from tempfile import NamedTemporaryFile
 import math
 
 from . import pipeline
+from . import operations
 
 class AbstractExecutor(object, metaclass=abc.ABCMeta):
 
@@ -20,9 +21,11 @@ class AbstractExecutor(object, metaclass=abc.ABCMeta):
   def load_config(self, global_config):
     self.executor_config = global_config['execution']
     self.connections = global_config['connection']
+    self.connections[None] = None
+
     self.pipelines = {
-      k: pipeline.BackupPipeline(v, global_config)
-      for k, v in global_config['pipelines'].items()
+      name: operations.get_operation(config, global_config, 'type')
+      for name, config in global_config['pipelines'].items()
     }
     self.folders = [
       FolderExecutor(f, self) for f in global_config['folders']
@@ -78,6 +81,13 @@ class DefaultExecutor(AbstractExecutor):
 
   def execute(self):
     jobs = self.executor_config.get('parralel_jobs', 1)
+    for folder in self.folders:
+      folder.verify()
+
+    print ("*"*25)
+    print ("Verification done")
+    print ("*" * 25)
+
     if jobs == 1:
       for folder in self.folders:
         folder.execute()

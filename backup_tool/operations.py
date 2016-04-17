@@ -2,6 +2,8 @@
 import abc
 
 import datetime
+import os
+import typing
 from tempfile import NamedTemporaryFile
 
 import subprocess
@@ -15,8 +17,8 @@ def register_operation(name):
     return type
   return wrapper
 
-def get_operation(operation_cfg:dict, global_config:dict):
-  operation_name = operation_cfg['operation']
+def get_operation(operation_cfg:dict, global_config:dict, type_key='operation'):
+  operation_name = operation_cfg[type_key]
   OperationClass = OPERATIONS[operation_name]
   operation = OperationClass(operation_cfg, global_config)
   return operation
@@ -60,19 +62,87 @@ class BackupPipelineOperation(object, metaclass=abc.ABCMeta):
   def backward(self, context:dict) -> str:
     pass
 
+
+def run_command(script, error):
+  with NamedTemporaryFile(encoding="utf8", mode="w+") as file:
+    try:
+      file.write(script)
+      file.flush()
+      subprocess.check_output(['bash', file.name])
+    except subprocess.CalledProcessError as e:
+      raise ConfigurationError(error.format(
+        e.output
+      ))
+
+
+def verify_folders_exist(folder_list: str):
+  VERIFICATION_SCRIPT = """
+    for glob in {folders};
+    do
+      if ! stat -t ${{glob}} >/dev/null 2>&1
+      then
+        echo ${{glob}}
+        exit 1
+      fi
+    done
+    """
+
+  script = VERIFICATION_SCRIPT.format(folders=folder_list)
+  error = "One of the backed-up folders didn't exist: '{}'"
+  run_command(script, error)
+
+
+@register_operation("tarsnap")
+class TarsnapOperation(BackupPipelineOperation):
+
+  FSCK_TARSNAP = """
+    {exec} --fsck --keyfile {keyfile} --cachedir {cachedir}
+  """.strip()
+
+  RUN_TARSNAP = """
+    {exec} -c --keyfile {keyfile} --cachedir {cachedir} -f {archive} {folders}
+  """
+
+  def __init__(self, config: dict, global_config: dict):
+    super().__init__(config, global_config)
+
+  def load_config(self, config: dict, global_config:dict):
+    self.keyfile = config['keyfile']
+    self.cachedir = config['cachedir']
+    self.tarsnap_exec = config.get('executable', 'tarsnap')
+
+  def verify(self, context: dict):
+    folders = context['folders']
+    verify_folders_exist(folders)
+    if not os.path.exists(self.keyfile):
+      raise ConfigurationError("Tarsnap keyfile  {} does not exist".format(self.keyfile))
+
+    if not os.path.exists(self.keyfile):
+      raise ConfigurationError("Tarsnap cachedir {} does not exist".format(self.cachedir))
+    print("Running tarsnap fsck")
+    self._assert_command_exits(self.tarsnap_exec)
+    script = self.FSCK_TARSNAP.format(
+      keyfile=self.keyfile,
+      cachedir=self.cachedir,
+      exec=self.tarsnap_exec
+    )
+    run_command(script, "Tarsnap fsck failed: {}")
+
+  def backward(self, context: dict) -> str:
+    return "tarsnap has no backward command"
+
+  def forward(self, context: dict) -> str:
+    return self.RUN_TARSNAP.format(
+      keyfile=self.keyfile,
+      cachedir=self.cachedir,
+      exec=self.tarsnap_exec,
+      folders=context['folders'],
+      archive=context['file_name']
+    )
+
+
 @register_operation("tar")
 class TarOperation(BackupPipelineOperation):
-
-  VERIFICATION_SCRIPT = """
-  for glob in {folders};
-  do
-    if ! stat -t ${{glob}} >/dev/null 2>&1
-    then
-      echo ${{glob}}
-      exit 1
-    fi
-  done
-  """
 
   def forward(self, context: dict) -> str:
     folders = context['folders']
@@ -86,18 +156,8 @@ class TarOperation(BackupPipelineOperation):
     return "tar"
 
   def verify(self, context:dict):
+    verify_folders_exist(context['folders'])
     self._assert_command_exits("tar")
-    with NamedTemporaryFile(encoding="utf8", mode="w+") as file:
-      try:
-        script = self.VERIFICATION_SCRIPT.format(
-          folders=context['folders'])
-        file.write(script)
-        file.flush()
-        subprocess.check_output(['bash', file.name])
-      except subprocess.CalledProcessError as e:
-        raise ConfigurationError("One of referenced files did not exist {}".format(
-          e.output
-        ))
 
 @register_operation('compress')
 class CompressOperation(BackupPipelineOperation):
