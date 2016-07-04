@@ -71,7 +71,7 @@ def run_command(script, error):
       subprocess.check_output(['bash', file.name])
     except subprocess.CalledProcessError as e:
       raise ConfigurationError(error.format(
-        e.output
+        e.output.decode('utf-8')
       ))
 
 
@@ -119,14 +119,17 @@ class TarsnapOperation(BackupPipelineOperation):
 
     if not os.path.exists(self.keyfile):
       raise ConfigurationError("Tarsnap cachedir {} does not exist".format(self.cachedir))
-    print("Running tarsnap fsck")
-    self._assert_command_exits(self.tarsnap_exec)
-    script = self.FSCK_TARSNAP.format(
-      keyfile=self.keyfile,
-      cachedir=self.cachedir,
-      exec=self.tarsnap_exec
-    )
-    run_command(script, "Tarsnap fsck failed: {}")
+
+    # Running FSCK seemed like a good idea, but takes too much time.
+
+    # print("Running tarsnap fsck")
+    # self._assert_command_exits(self.tarsnap_exec)
+    # script = self.FSCK_TARSNAP.format(
+    #   keyfile=self.keyfile,
+    #   cachedir=self.cachedir,
+    #   exec=self.tarsnap_exec
+    # )
+    # run_command(script, "Tarsnap fsck failed: {}")
 
   def backward(self, context: dict) -> str:
     return "tarsnap has no backward command"
